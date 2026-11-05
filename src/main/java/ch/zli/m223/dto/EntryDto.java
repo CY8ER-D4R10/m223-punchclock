@@ -1,6 +1,8 @@
 package ch.zli.m223.dto;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -14,9 +16,9 @@ import org.eclipse.microprofile.openapi.annotations.media.Schema;
  * Data Transfer Object for {@link ch.zli.m223.model.Entry}.
  *
  * The DTO is the model of the REST interface, the entity is the model of the
- * database. Keeping them apart means a change to the database schema does not
- * automatically change the API, and it is the DTO that carries the validation
- * rules.
+ * database. Relations are exchanged as <b>ids</b>, not as nested objects: that
+ * keeps the payload small and avoids back references. The nested form is
+ * offered separately by {@link EntryDetailDto}.
  */
 public class EntryDto {
 
@@ -34,6 +36,16 @@ public class EntryDto {
 
     @NotNull(message = "Check-out is required")
     private LocalDateTime checkOut;
+
+    /** Optional. {@code null} means the entry has no category. */
+    private Long categoryId;
+
+    /**
+     * Ids of the assigned tags. Never {@code null} in a response; an empty list
+     * means the entry has no tags. On PUT the given list <b>replaces</b> all
+     * assignments.
+     */
+    private List<Long> tagIds = new ArrayList<>();
 
     public Long getId() {
         return id;
@@ -57,6 +69,22 @@ public class EntryDto {
 
     public void setCheckOut(LocalDateTime checkOut) {
         this.checkOut = checkOut;
+    }
+
+    public Long getCategoryId() {
+        return categoryId;
+    }
+
+    public void setCategoryId(Long categoryId) {
+        this.categoryId = categoryId;
+    }
+
+    public List<Long> getTagIds() {
+        return tagIds;
+    }
+
+    public void setTagIds(List<Long> tagIds) {
+        this.tagIds = tagIds == null ? new ArrayList<>() : tagIds;
     }
 
     /**

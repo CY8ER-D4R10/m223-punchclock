@@ -26,15 +26,20 @@ import org.eclipse.microprofile.openapi.annotations.tags.Tag;
 
 import ch.zli.m223.dto.EntryDto;
 import ch.zli.m223.mapper.EntryMapper;
-import ch.zli.m223.model.Entry;
 import ch.zli.m223.service.EntryService;
+import ch.zli.m223.service.EntryService.EntryResult;
 
 /**
  * REST interface for entries.
  *
- * The interface exposes {@link EntryDto}, never the entity. Incoming DTOs are
- * validated by {@code @Valid} before the method runs; a violated rule is
- * answered by Quarkus with 400 Bad Request.
+ * The interface exposes {@link EntryDto}, never the entity. Relations are
+ * exchanged as ids; the nested form is served by
+ * {@link EntryDetailController} under {@code /entry-details}.
+ *
+ * <p>POST answers with 200 rather than 201 — that was the contract before this
+ * change and clients rely on it. The resources added in this assignment
+ * ({@code /categories}, {@code /tags}) use 201, which is the correct code for a
+ * created resource.</p>
  */
 @Path("/entries")
 @Tag(name = "Entries", description = "Handling of entries")
@@ -48,7 +53,8 @@ public class EntryController {
 
     @GET
     @Produces(MediaType.APPLICATION_JSON)
-    @Operation(summary = "Index all Entries.", description = "Returns a list of all entries.")
+    @Operation(summary = "Index all Entries.",
+               description = "Returns all entries with the ids of their category and tags.")
     public List<EntryDto> index() {
         return entryService.findAll().stream()
                 .map(entryMapper::toDto)
@@ -58,39 +64,48 @@ public class EntryController {
     @POST
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Operation(summary = "Creates a new entry.", description = "Creates a new entry and returns the newly added entry.")
+    @Operation(summary = "Creates a new entry.",
+               description = "categoryId and tagIds reference existing categories and tags.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "The created entry.",
             content = @Content(schema = @Schema(implementation = EntryDto.class))),
-        @APIResponse(responseCode = "400", description = "The request body is missing or violates a validation rule.")
+        @APIResponse(responseCode = "400", description = "The request body is missing or violates a validation rule."),
+        @APIResponse(responseCode = "404", description = "A referenced category or tag does not exist.")
     })
-    public EntryDto create(
+    public Response create(
             @RequestBody(description = "The entry to create.")
             @NotNull @Valid EntryDto dto) {
-        Entry created = entryService.createEntry(entryMapper.toEntity(dto));
-        return entryMapper.toDto(created);
+        EntryResult result = entryService.createEntry(
+                entryMapper.toEntity(dto), dto.getCategoryId(), dto.getTagIds());
+        if (result.result() != EntryService.RelationResult.OK) {
+            return Response.status(Response.Status.NOT_FOUND).build();
+        }
+        return Response.ok(entryMapper.toDto(result.entry())).build();
     }
 
     @PUT
     @Path("/{id}")
     @Produces(MediaType.APPLICATION_JSON)
     @Consumes(MediaType.APPLICATION_JSON)
-    @Operation(summary = "Updates an entry.", description = "Replaces check-in and check-out of the entry with the given id.")
+    @Operation(summary = "Updates an entry.",
+               description = "Replaces check-in, check-out and the assigned relations. "
+                       + "A null categoryId removes the category, an empty tagIds removes all tags.")
     @APIResponses({
         @APIResponse(responseCode = "200", description = "The updated entry.",
             content = @Content(schema = @Schema(implementation = EntryDto.class))),
         @APIResponse(responseCode = "400", description = "The request body is missing or violates a validation rule."),
-        @APIResponse(responseCode = "404", description = "No entry exists with the given id.")
+        @APIResponse(responseCode = "404", description = "The entry, or a referenced category or tag, does not exist.")
     })
     public Response update(
             @PathParam("id") Long id,
             @RequestBody(description = "The new values for the entry.")
             @NotNull @Valid EntryDto dto) {
-        Entry updated = entryService.updateEntry(id, entryMapper.toEntity(dto));
-        if (updated == null) {
+        EntryResult result = entryService.updateEntry(
+                id, entryMapper.toEntity(dto), dto.getCategoryId(), dto.getTagIds());
+        if (result.result() != EntryService.RelationResult.OK) {
             return Response.status(Response.Status.NOT_FOUND).build();
         }
-        return Response.ok(entryMapper.toDto(updated)).build();
+        return Response.ok(entryMapper.toDto(result.entry())).build();
     }
 
     @DELETE
